@@ -1,0 +1,166 @@
+// Agent Reach v2.0 - Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+// ====== 用户模型 ======
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  avatar    String?
+  settings  String   @default("{}") @db.Text  // JSON string for user settings
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  channelConfigs  ChannelConfig[]
+  scheduledTasks  ScheduledTask[]
+  browseTasks     BrowseTask[]
+  reports         Report[]
+  memoryEntries   MemoryEntry[]
+}
+
+// ====== 平台通道配置 ======
+model ChannelConfig {
+  id        String   @id @default(cuid())
+  userId    String
+  channel   String                       // platform name: twitter, reddit, youtube, etc.
+  platform  String                       // display name
+  tier      Int      @default(0)         // 0=zero-config, 1=free-key, 2=complex
+  enabled   Boolean  @default(true)
+  authConfig String  @default("{}") @db.Text      // JSON: cookie, apikey, etc.
+  healthStatus String @default("unknown") // ok, warn, off, error, unknown
+  lastCheck DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channel])
+}
+
+// ====== 定时任务 ======
+model ScheduledTask {
+  id           String    @id @default(cuid())
+  userId       String
+  name         String
+  description  String?
+  cronExpr     String                       // cron expression
+  repeatType   String    @default("daily")   // daily, weekday, weekly, monthly, once, every_Nh, every_Nm
+  prompt       String                        // LLM task prompt
+  channels     String    @default("[]") @db.Text      // JSON array of channel names
+  enabled      Boolean   @default(true)
+  maxDelayHours Int      @default(6)
+  lastRunAt    DateTime?
+  nextRunAt    DateTime?
+  lastStatus   String    @default("never")   // never, success, error, running
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reports Report[]
+
+  @@index([userId, enabled])
+}
+
+// ====== 浏览任务（一次性） ======
+model BrowseTask {
+  id          String    @id @default(cuid())
+  userId      String
+  url         String
+  prompt      String
+  status      String    @default("pending")  // pending, running, completed, error
+  progress    Int       @default(0)          // 0-100
+  turnsUsed   Int       @default(0)
+  maxTurns    Int       @default(15)
+  resultSummary String?
+  error       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reports Report[]
+
+  @@index([userId, status])
+}
+
+// ====== 摘要报告 ======
+model Report {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  content     String   @db.Text                 // Markdown content
+  summary     String?                       // Brief summary
+  source      String   @db.Text                 // Source URLs or channel names (JSON array)
+  channel     String?                       // Primary channel
+  status      String   @default("completed") // completed, partial, error
+  wordCount   Int      @default(0)
+
+  scheduledTaskId String?
+  browseTaskId    String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheduledTask ScheduledTask?  @relation(fields: [scheduledTaskId], references: [id], onDelete: SetNull)
+  browseTask    BrowseTask?     @relation(fields: [browseTaskId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+}
+
+// ====== Agent 记忆系统 ======
+model MemoryEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  category  String                        // rule, insight, fact, sop, history
+  level     Int      @default(1)          // L0=meta, L1=insight, L2=fact, L3=sop, L4=history
+  title     String
+  content   String   @db.Text                 // Markdown content
+  tags      String   @default("[]") @db.Text      // JSON array of tags
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, level])
+  @@index([userId, category])
+}
+
+// ====== 采集日志 ======
+model ChannelLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  channel   String
+  action    String                        // collect, browse, check
+  status    String                        // success, error, warn
+  message   String
+  duration  Int?                          // ms
+  createdAt DateTime @default(now())
+
+  @@index([channel, createdAt])
+}
+
+// ====== Agent 会话日志 ======
+model AgentSession {
+  id        String   @id @default(cuid())
+  userId    String?
+  taskType  String                        // scheduled, browse, manual
+  taskId    String?
+  status    String   @default("running")  // running, completed, error
+  turns     Int      @default(0)
+  prompt    String
+  result    String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+}
