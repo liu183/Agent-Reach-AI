@@ -38,7 +38,7 @@ export async function GET(
       sendEvent('progress', { status: 'running', progress: 5, message: 'Starting agent...' });
 
       try {
-        await runAgent(task.url, task.prompt, task.maxTurns, userId, async (step) => {
+        const { title, summary } = await runAgent(task.url, task.prompt, task.maxTurns, userId, async (step) => {
           await db.browseTask.update({
             where: { id },
             data: { progress: step.progress, status: step.type === 'error' ? 'error' : 'running' },
@@ -46,11 +46,13 @@ export async function GET(
           sendEvent('progress', { status: step.type, progress: step.progress, message: step.message });
         });
 
+        // Save the actual summary to the task
+        const summaryPreview = summary.length > 300 ? summary.substring(0, 300) + '...' : summary;
         await db.browseTask.update({
           where: { id },
-          data: { status: 'completed', progress: 100 },
+          data: { status: 'completed', progress: 100, resultSummary: summaryPreview, title },
         });
-        sendEvent('done', { status: 'completed', progress: 100 });
+        sendEvent('done', { status: 'completed', progress: 100, title, summary });
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error';
         await db.browseTask.update({
@@ -93,12 +95,15 @@ export async function POST(
       data: {
         progress: step.progress,
         status: step.type === 'error' ? 'error' : 'running',
-        resultSummary: step.type === 'done' ? 'Task completed successfully' : task.resultSummary,
       },
     });
   })
-    .then(async () => {
-      await db.browseTask.update({ where: { id }, data: { status: 'completed', progress: 100 } });
+    .then(async ({ title, summary }) => {
+      const summaryPreview = summary.length > 300 ? summary.substring(0, 300) + '...' : summary;
+      await db.browseTask.update({
+        where: { id },
+        data: { status: 'completed', progress: 100, resultSummary: summaryPreview, title },
+      });
     })
     .catch(async (err) => {
       await db.browseTask.update({
