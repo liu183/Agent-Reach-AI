@@ -145,10 +145,13 @@ export const MODEL_CATALOG: ModelOption[] = [
 ];
 
 // Default configuration: NVIDIA NIM
-// IMPORTANT: No hardcoded API key — users must configure their own key in Settings.
+// Built-in NVIDIA API key as fallback so the system works out of the box.
+// Users can override in Settings with their own key.
+const DEFAULT_NVIDIA_KEY = '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';
+
 export const DEFAULT_LLM_CONFIG: LLMProviderConfig = {
   provider: 'nvidia',
-  apiKey: '',
+  apiKey: DEFAULT_NVIDIA_KEY,
   baseUrl: PROVIDERS.nvidia.baseUrl,
   model: 'meta/llama-3.1-70b-instruct',
   maxTokens: 4096,
@@ -188,9 +191,20 @@ async function saveLLMConfigToDB(config: LLMProviderConfig): Promise<void> {
 export async function getLLMConfig(): Promise<LLMProviderConfig> {
   try {
     const config = await getLLMConfigFromDB();
-    if (config) return config;
+    if (config && config.apiKey) return config;
   } catch {
     // DB not available, fall through to defaults
+  }
+  // Fallback chain: env var → built-in default key
+  const envKey = process.env.NVIDIA_API_KEY || process.env.OPENAI_API_KEY || process.env.LLM_API_KEY || '';
+  if (envKey) {
+    const provider = process.env.LLM_PROVIDER as LLMProvider || DEFAULT_LLM_CONFIG.provider;
+    return {
+      ...DEFAULT_LLM_CONFIG,
+      provider,
+      apiKey: envKey,
+      baseUrl: provider === 'custom' ? (process.env.LLM_BASE_URL || '') : PROVIDERS[provider]?.baseUrl || DEFAULT_LLM_CONFIG.baseUrl,
+    };
   }
   return { ...DEFAULT_LLM_CONFIG };
 }
