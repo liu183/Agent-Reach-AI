@@ -26,7 +26,7 @@ export function LiveBrowsePanel() {
   const [streamDone, setStreamDone] = useState(false);
   const [initialMessages, setInitialMessages] = useState<StreamMessage[]>([]);
   const eventSourceRef = useRef<EventSource | null>(null);
-  const { setView } = useAppStore();
+  const { setView, pendingBrowseTaskId, setPendingBrowseTaskId } = useAppStore();
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
 
@@ -68,22 +68,35 @@ export function LiveBrowsePanel() {
     return () => { cancelled = true; };
   }, []);
 
-  // Auto-select running task when tasks load
+  // Auto-select pending or running task when tasks load, or when a new task is passed from form
   useEffect(() => {
-    if (tasks.length > 0 && !selectedTaskId) {
-      const runningTask = tasks.find((t) => t.status === 'running');
-      if (runningTask) {
-        setSelectedTaskId(runningTask.id);
+    if (tasks.length === 0) return;
+    if (selectedTaskId) return;
+
+    // Priority 1: Use the task ID passed from the creation form
+    if (pendingBrowseTaskId) {
+      const pendingTask = tasks.find((t) => t.id === pendingBrowseTaskId);
+      if (pendingTask) {
+        setSelectedTaskId(pendingTask.id);
+        setPendingBrowseTaskId(null);
+        return;
       }
     }
-  }, [tasks, selectedTaskId]);
 
-  // Connect to SSE stream for active tasks
+    // Priority 2: Auto-select the first pending or running task
+    const activeTask = tasks.find((t) => t.status === 'pending' || t.status === 'running');
+    if (activeTask) {
+      setSelectedTaskId(activeTask.id);
+    }
+  }, [tasks, selectedTaskId, pendingBrowseTaskId, setPendingBrowseTaskId]);
+
+  // Connect to SSE stream for active tasks (GET handler runs the agent)
   useEffect(() => {
     if (!selectedTask) return;
     if (selectedTask.status === 'completed' || selectedTask.status === 'error') return;
 
     setMessages([]);
+    setStreamDone(false);
 
     const es = apiEventSource(`/api/tasks/browse/${selectedTask.id}/stream`);
     eventSourceRef.current = es;
@@ -96,12 +109,16 @@ export function LiveBrowsePanel() {
     es.addEventListener('done', () => {
       setStreamDone(true);
       es.close();
+      // Refresh task list to get final status and resultSummary
+      apiFetch<BrowseTask[]>('/api/tasks/browse').then((data) => setTasks(data)).catch(() => {});
     });
 
     es.addEventListener('error', () => {
       setMessages((prev) => [...prev, { type: 'error', status: 'error', progress: 0, message: 'Connection lost' }]);
       setStreamDone(true);
       es.close();
+      // Refresh on error too
+      apiFetch<BrowseTask[]>('/api/tasks/browse').then((data) => setTasks(data)).catch(() => {});
     });
 
     return () => {
