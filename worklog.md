@@ -1,60 +1,66 @@
-# Agent Reach v2.0 Worklog
-
 ---
 Task ID: 1
 Agent: Main Agent
-Task: Analyze Agent Reach and GenericAgent repositories
+Task: Add Xiaomi MiMo LLM provider with 8 models
 
 Work Log:
-- Deep analysis of https://github.com/Panniantong/Agent-Reach (Python CLI tool for 16+ platform web access)
-- Deep analysis of https://github.com/lsdefine/GenericAgent (autonomous web browsing + periodic summarization)
-- Designed unified architecture merging both projects into a Next.js full-stack application
-- Created comprehensive development plan with 5 phases and 17 steps
+- Added 'xiaomi' to LLMProvider type union
+- Added Xiaomi provider config (name, baseUrl, icon, color) to PROVIDERS map
+- Added 8 MiMo models to MODEL_CATALOG: V2.5-Pro, V2.5, V2.5-TTS-VoiceClone, V2.5-TTS-VoiceDesign, V2.5-TTS, V2-Pro, V2-Omni, V2-TTS
+- Categories: Flagship, General, Audio, Multimodal
 
 Stage Summary:
-- Agent Reach: Python CLI installer/doctor for 16 internet platforms (Web, YouTube, Twitter, Reddit, etc.)
-- GenericAgent: Autonomous agent with idle detection, cron scheduling, Chrome Extension browsing, LLM summarization
-- Merged plan: Web-based agent platform with 16 channels, autonomous browsing, scheduled summarization, memory system
+- Modified: src/lib/agent/llm.ts
+- Xiaomi MiMo provider fully integrated with settings UI (auto-discovered via providers API)
 
 ---
-Task ID: 2-a
+Task ID: 2
 Agent: Main Agent
-Task: Initialize Next.js fullstack project environment
+Task: Implement scheduled task auto-execution engine
 
 Work Log:
-- Invoked fullstack-dev skill and ran init script
-- Verified project structure with shadcn/ui, Prisma, Next.js 16
+- Created /api/cron/run-scheduled-tasks endpoint (GET + POST)
+- Implemented Vercel Cron integration via vercel.json crons config (every 5 min)
+- Added cron expression parser supporting daily/weekly/monthly/interval patterns
+- Added CRON_SECRET env var for production auth
+- Cron flow: find due tasks → collect from channels → LLM summarize → save report → update nextRunAt
 
 Stage Summary:
-- Environment initialized at /home/z/my-project
-- All shadcn/ui components available
-- Prisma + SQLite configured
+- Created: src/app/api/cron/run-scheduled-tasks/route.ts
+- Modified: vercel.json (added crons array)
 
 ---
-Task ID: 2-b
-Agent: full-stack-developer subagent
-Task: Build complete Agent Reach v2.0 application
+Task ID: 3
+Agent: Main Agent
+Task: Complete all 9 placeholder channel implementations
 
 Work Log:
-- Created Prisma schema with 8 models (User, ChannelConfig, ScheduledTask, BrowseTask, Report, MemoryEntry, ChannelLog, AgentSession)
-- Built TypeScript types and constants for 16 channels
-- Implemented Zustand state store for SPA navigation
-- Created 14 API routes (dashboard stats, channels CRUD + health check, scheduled tasks CRUD, browse tasks CRUD + SSE stream, reports list + detail, memory, agent run)
-- Built 16 channel implementations (web, youtube, twitter, reddit, github, rss, v2ex, xiaohongshu, bilibili, weibo, douyin, linkedin, xueqiu, wechat, xiaoyuzhou, exa-search)
-- Implemented agent engine with Jina Reader fetch → HTML simplification → LLM summarization → DB save
-- Built LLM integration using z-ai-web-dev-sdk (server-side only)
-- Created smart HTML parser with cheerio
-- Built 9 UI views: Dashboard, Channels, Scheduled Tasks, Browse Tasks, Live Browse, Reports, Report Detail, Memory, Settings
-- Created layout components: collapsible sidebar with emerald theme, header
-- Added seed data for demo (4 reports, 3 scheduled tasks, 4 memory entries)
-- ESLint passes with 0 errors
-- All API endpoints return 200
+- YouTube: Jina Reader for video pages and search results
+- Twitter/X: Jina Reader for tweets, profiles, and search
+- Weibo: Real m.weibo.cn API for hot search topics
+- XiaoHongShu: Jina Reader for notes and explore page with fallback
+- Xueqiu: Real API with session token for stock discussions
+- Douyin: Jina Reader for video pages and search
+- LinkedIn: Jina Reader for profiles and search results
+- XiaoYuZhou: Jina Reader + podcast toplist API fallback
+- Exa Search: Real Exa API with EXA_API_KEY, DuckDuckGo fallback
+- WeChat: Jina Reader for article extraction
 
 Stage Summary:
-- Complete single-page application with client-side routing via Zustand
-- 16 platform channels with health check and configuration
-- Agent engine: browse URL → simplify HTML → AI summarize → save report
-- Scheduled tasks, browse tasks, reports center, memory system, settings
-- Dark theme with emerald/green accents
-- Framer Motion page transitions
-- Responsive design with collapsible sidebar
+- All 16 channels now have real data collection capabilities
+- Modified: 10 channel files + exa-search.ts
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Build verification and push to GitHub
+
+Work Log:
+- bun install completed successfully
+- bunx next build passed - all 19 routes registered correctly
+- Committed as e128d83
+- Pushed to https://github.com/liu183/Agent-Reach-AI.git main
+
+Stage Summary:
+- Build: SUCCESS (14 files changed, 724 insertions, 49 deletions)
+- Push: SUCCESS (41a69e1..e128d83)
