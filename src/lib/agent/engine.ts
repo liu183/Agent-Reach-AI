@@ -103,13 +103,6 @@ export async function runAgent(
     });
 
     currentSnapshot = await fetchPage(currentUrl);
-    turns.push({
-      turn: 0,
-      observation: `Fetched page: "${currentSnapshot.title}" (${currentSnapshot.contentLength} chars, ${currentSnapshot.links.length} links, ${currentSnapshot.forms.length} forms)`,
-      thinking: '',
-      action: { type: 'think', reasoning: 'Initial page loaded, analyzing task requirements.' },
-      result: 'Page loaded successfully.',
-    });
 
     onStep({
       turn: 0, phase: 'observe',
@@ -117,69 +110,112 @@ export async function runAgent(
       progress: 15, url: currentUrl, title: currentSnapshot.title,
     });
 
-    // === Agent Loop ===
-    for (let turn = 1; turn <= config.maxTurns; turn++) {
-      const progressBase = 15 + Math.floor((turn / config.maxTurns) * 75);
-
-      // --- THINK Phase ---
-      onStep({
-        turn, phase: 'think',
-        message: `Turn ${turn}/${config.maxTurns}: Analyzing page and planning next action...`,
-        progress: progressBase, url: currentUrl,
-      });
-
-      // Build context for LLM
-      const pageContext = currentSnapshot
-        ? formatPageForLLM(currentSnapshot, config.maxContentLength)
-        : 'No page loaded.';
-
-      const historyContext = turns.slice(-3).map((t, i) =>
-        `--- Previous Step ${i + 1} ---\nObservation: ${t.observation}\nAction: ${t.action.type} → ${t.action.target || ''}\nResult: ${t.result}`
-      ).join('\n\n');
-
-      const thinkPrompt = `## Current Task
+    // === Quick Path: Single-step analysis (most common case) ===
+    // First LLM call: analyze page and decide if task can be completed in one shot
+    const quickPrompt = `## Current Task
 ${task}
 
 ## Current Page
-${pageContext}
+${formatPageForLLM(currentSnapshot, config.maxContentLength)}
 
-## Action History (recent)
-${historyContext || 'No previous actions yet.'}
+## Instructions
+Analyze this page and the task. Decide if you can complete the task now, or if you need to take additional actions (navigate, click, fill form, etc.).
 
-## Turn ${turn} of ${config.maxTurns}
-Based on the task and current page state, decide your next action. Remember to output ONLY valid JSON.`;
+If the task can be completed with information from this page, respond with:
+{"reasoning":"your analysis","action":{"type":"complete","summary":"your comprehensive answer"}}
 
+If you need to take actions first, respond with the appropriate action (navigate, click_link, fill_form, extract, search, scroll).`;
+
+    const quickResponse = await chatCompletion([
+      { role: 'system', content: AGENT_SYSTEM_PROMPT },
+      { role: 'user', content: quickPrompt },
+    ], { maxTokens: 1000, temperature: 0.2 });
+
+    const quickAction = parseAction(quickResponse, 0);
+
+    onStep({
+      turn: 1, phase: 'think',
+      message: quickAction.reasoning || 'Analyzing task requirements...',
+      progress: 25, url: currentUrl,
+    });
+
+    // If task can be completed immediately
+    if (quickAction.type === 'complete' && quickAction.summary) {
+      onStep({
+        turn: 1, phase: 'act',
+        message: 'Task completed in single analysis pass.',
+        progress: 70, url: currentUrl,
+      });
+
+      const summary = quickAction.summary;
+      await saveReport(userId, currentSnapshot.title, summary, [currentUrl], 1);
+
+      onStep({
+        turn: 1, phase: 'reflect',
+        message: summary,
+        progress: 100, url: currentUrl,
+      });
+
+      return { title: currentSnapshot.title, summary, turnsUsed: 1 };
+    }
+
+    // === Multi-step path ===
+    onStep({
+      turn: 1, phase: 'act',
+      message: `Agent entering multi-step mode: ${quickAction.type}${quickAction.target ? ` → ${quickAction.target}` : ''}`,
+      progress: 30, url: currentUrl, action: quickAction,
+    });
+
+    turns.push({
+      turn: 0,
+      observation: `Fetched page: "${currentSnapshot.title}" (${currentSnapshot.contentLength} chars)`,
+      thinking: quickAction.reasoning,
+      action: quickAction,
+      result: 'Starting multi-step execution.',
+    });
+
+    // Execute the first action from quick analysis
+    let action = quickAction;
+    for (let turn = 1; turn <= config.maxTurns; turn++) {
+      const progressBase = 30 + Math.floor((turn / config.maxTurns) * 60);
+
+      // --- THINK Phase (skip for turn 1, already have action from quick analysis) ---
       let action: AgentAction;
-      try {
-        const llmResponse = await chatCompletion([
-          { role: 'system', content: AGENT_SYSTEM_PROMPT },
-          { role: 'user', content: thinkPrompt },
-        ], { maxTokens: 800, temperature: 0.2 });
 
-        action = parseAction(llmResponse, turn);
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : String(err);
+      if (turn === 1) {
+        action = quickAction;
         onStep({
           turn, phase: 'think',
-          message: `LLM reasoning error: ${errMsg}. Retrying with simplified prompt...`,
+          message: action.reasoning || `Executing: ${action.type}`,
+          progress: progressBase, url: currentUrl,
+        });
+      } else {
+        onStep({
+          turn, phase: 'think',
+          message: `Turn ${turn}: Planning next action...`,
           progress: progressBase, url: currentUrl,
         });
 
-        // Fallback: simple completion with less context
-        const fallbackResponse = await chatCompletion([
-          { role: 'system', content: AGENT_SYSTEM_PROMPT },
-          { role: 'user', content: `Task: ${task}\nCurrent page: ${currentSnapshot?.title || 'unknown'}\nWhat should I do next? Respond with ONLY JSON.` },
-        ], { maxTokens: 300, temperature: 0.1 });
+        const pageContext = currentSnapshot
+          ? formatPageForLLM(currentSnapshot, config.maxContentLength)
+          : 'No page loaded.';
 
-        action = parseAction(fallbackResponse, turn);
+        const historyContext = turns.slice(-3).map((t, i) =>
+          `--- Step ${i + 1} ---\nAction: ${t.action.type} → ${t.result.substring(0, 150)}`
+        ).join('\n');
+
+        const thinkPrompt = `## Task: ${task}\n## Current Page:\n${pageContext}\n## History:\n${historyContext}\n\nDecide next action. JSON only.`;
+
+        try {
+          const llmResponse = await chatCompletion([
+            { role: 'system', content: AGENT_SYSTEM_PROMPT },
+            { role: 'user', content: thinkPrompt },
+          ], { maxTokens: 600, temperature: 0.2 });
+          action = parseAction(llmResponse, turn);
+        } catch {
+          action = { type: 'complete', reasoning: 'LLM error, completing with current data.', summary: `Could not continue multi-step analysis. Last observation: ${turns[turns.length - 1]?.result || 'none'}` };
+        }
       }
-
-      // Log the thinking
-      onStep({
-        turn, phase: 'think',
-        message: action.reasoning || `Planning to: ${action.type}`,
-        progress: progressBase + 5, url: currentUrl,
-      });
 
       // --- Check for completion ---
       if (action.type === 'complete') {
