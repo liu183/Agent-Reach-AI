@@ -22,7 +22,7 @@ export async function POST(
     // Update health status in DB
     await db.channelConfig.upsert({
       where: {
-        id_userId_channel: { userId, channel: id },
+        userId_channel: { userId, channel: id },
       },
       create: {
         userId,

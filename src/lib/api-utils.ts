@@ -26,7 +26,7 @@ export async function seedIfEmpty(userId: string) {
   for (const ch of CHANNELS) {
     await db.channelConfig.upsert({
       where: {
-        id_userId_channel: { userId, channel: ch.id },
+        userId_channel: { userId, channel: ch.id },
       },
       create: {
         userId,

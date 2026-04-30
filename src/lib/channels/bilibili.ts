@@ -1,4 +1,5 @@
 import type { Channel, ChannelHealth } from './base';
+import { getChannelAuthConfig } from './config-provider';
 
 export const bilibiliChannel: Channel = {
   id: 'bilibili',
@@ -11,8 +12,20 @@ export const bilibiliChannel: Channel = {
     } catch (err) { return { status: 'error', message: `Bilibili error: ${err instanceof Error ? err.message : 'Unknown'}` }; }
   },
   async collect(query: string): Promise<{ title: string; content: string; url: string }> {
+    const headers: Record<string, string> = {};
+
+    // Attach SESSDATA cookie from DB config if available (for higher search limits)
+    const authConfig = await getChannelAuthConfig('bilibili');
+    const cookie = authConfig?.cookie as string | undefined;
+    if (cookie) {
+      headers['Cookie'] = cookie;
+    }
+
     try {
-      const resp = await fetch(`https://api.bilibili.com/x/web-interface/search/type?keyword=${encodeURIComponent(query)}&page=1`, { signal: AbortSignal.timeout(15000) });
+      const resp = await fetch(`https://api.bilibili.com/x/web-interface/search/type?keyword=${encodeURIComponent(query)}&page=1`, {
+        headers,
+        signal: AbortSignal.timeout(15000),
+      });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
       const results = data?.data?.results?.slice(0, 5) || [];

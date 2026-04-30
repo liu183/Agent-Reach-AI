@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, ensureDefaultUser } from '@/lib/api-utils';
+import { runAgent } from '@/lib/agent/engine';
 
 export async function PUT(
   request: NextRequest,
@@ -89,60 +90,57 @@ export async function POST(
       },
     });
 
-    // Execute agent in background using the runAgent endpoint
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-
-    // Fire-and-forget: create a browse task to run the agent
+    // Execute agent directly (synchronous — avoids fire-and-forget being killed by serverless)
     const channels = JSON.parse(task.channels || '[]');
     const targetChannel = channels[0] || 'web';
+    const url = targetChannel === 'web' ? 'https://news.ycombinator.com' : `https://${targetChannel}.com`;
 
-    // Use the agent run endpoint
-    fetch(`${baseUrl}/api/agent/run`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: targetChannel === 'web' ? 'https://news.ycombinator.com' : `https://${targetChannel}.com`,
-        prompt: task.prompt,
-        maxTurns: 15,
-        userId,
-      }),
-    })
-      .then(async (res) => {
-        const result = await res.json().catch(() => null);
-        await db.scheduledTask.update({
-          where: { id },
-          data: {
-            lastStatus: result?.error ? 'error' : 'success',
-            lastRunAt: new Date(),
-          },
-        });
-        await db.agentSession.update({
-          where: { id: session.id },
-          data: {
-            status: result?.error ? 'error' : 'completed',
-            result: result?.summary || null,
-            turns: result?.turns || 0,
-          },
-        });
-      })
-      .catch(async (err) => {
-        await db.scheduledTask.update({
-          where: { id },
-          data: { lastStatus: 'error', lastRunAt: new Date() },
-        });
-        await db.agentSession.update({
-          where: { id: session.id },
-          data: { status: 'error', result: err instanceof Error ? err.message : 'Unknown error' },
-        });
+    try {
+      const result = await runAgent(url, task.prompt, 10, userId, () => {
+        // Silent step execution for scheduled tasks
       });
 
-    return NextResponse.json({
-      success: true,
-      message: 'Task execution started',
-      sessionId: session.id,
-    });
+      await db.scheduledTask.update({
+        where: { id },
+        data: {
+          lastStatus: 'success',
+          lastRunAt: new Date(),
+        },
+      });
+      await db.agentSession.update({
+        where: { id: session.id },
+        data: {
+          status: 'completed',
+          result: result.summary || null,
+          turns: result.turnsUsed || 0,
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Task completed successfully',
+        sessionId: session.id,
+        status: 'completed',
+        summary: result.summary,
+      });
+    } catch (agentErr) {
+      const errMsg = agentErr instanceof Error ? agentErr.message : 'Unknown error';
+      await db.scheduledTask.update({
+        where: { id },
+        data: { lastStatus: 'error', lastRunAt: new Date() },
+      });
+      await db.agentSession.update({
+        where: { id: session.id },
+        data: { status: 'error', result: errMsg },
+      });
+
+      return NextResponse.json({
+        success: false,
+        error: `Agent failed: ${errMsg}`,
+        sessionId: session.id,
+        status: 'error',
+      }, { status: 500 });
+    }
   } catch (error) {
     console.error('Scheduled task run error:', error);
     return NextResponse.json({ error: 'Failed to run task' }, { status: 500 });

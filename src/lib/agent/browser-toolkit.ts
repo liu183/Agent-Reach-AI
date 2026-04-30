@@ -1,9 +1,10 @@
 /**
  * Browser Toolkit — HTTP-based web interaction tools for the ReAct agent.
  * Uses Jina Reader for page fetching, HTTP POST for form submission,
- * and regex/DOM-like parsing for link/form extraction.
+ * and Cheerio-based parsing (via html-parser) for content extraction.
  */
 
+import * as cheerio from 'cheerio';
 import { JINA_READER_URL } from '@/lib/constants';
 import {
   PageSnapshot,
@@ -11,6 +12,7 @@ import {
   FormInfo,
   FormFieldInfo,
 } from './agent-types';
+import { extractTitle, simplifyHtml } from './html-parser';
 
 /**
  * Fetch a web page and extract structured snapshot
@@ -48,7 +50,7 @@ export async function fetchPage(url: string): Promise<PageSnapshot> {
     }
   }
 
-  // Parse page
+  // Parse page using Cheerio-based html-parser
   const title = extractTitle(rawHtml);
   const { text, links, forms } = extractPageStructure(rawHtml, url);
 
@@ -107,164 +109,108 @@ export async function submitForm(
   }
 }
 
-// ===== HTML Parsing Helpers =====
+// ===== HTML Parsing Helpers (Cheerio-based) =====
 
-function extractTitle(html: string): string {
-  // Try <title> tag
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  if (titleMatch) return decodeEntities(titleMatch[1].trim()).substring(0, 200);
-
-  // Try og:title meta
-  const ogMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([\s\S]*?)["']/i);
-  if (ogMatch) return decodeEntities(ogMatch[1].trim()).substring(0, 200);
-
-  return 'Untitled Page';
-}
-
+/**
+ * Extract links, forms, and simplified text from HTML using Cheerio.
+ * Uses html-parser's simplifyHtml for content extraction,
+ * and Cheerio selectors for link/form structural parsing.
+ */
 function extractPageStructure(html: string, baseUrl: string): {
   text: string;
   links: LinkInfo[];
   forms: FormInfo[];
 } {
+  const $ = cheerio.load(html);
   const links: LinkInfo[] = [];
   const forms: FormInfo[] = [];
 
-  // Extract links
-  const linkRegex = /<a[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  let linkMatch;
+  // Extract links using Cheerio
   let linkIndex = 0;
-  while ((linkMatch = linkRegex.exec(html)) !== null && linkIndex < 50) {
-    const href = linkMatch[1];
-    const text = cleanText(linkMatch[2]);
-    if (text && href && !href.startsWith('#') && !href.startsWith('javascript:') && href.length < 500) {
-      links.push({ text: text.substring(0, 100), href, index: linkIndex });
+  $('a[href]').each((_, el) => {
+    if (linkIndex >= 50) return false;
+    const href = $(el).attr('href') || '';
+    const text = $(el).text().trim().substring(0, 100);
+    if (
+      text &&
+      href &&
+      !href.startsWith('#') &&
+      !href.startsWith('javascript:') &&
+      href.length < 500
+    ) {
+      links.push({ text, href, index: linkIndex });
       linkIndex++;
     }
-  }
+  });
 
-  // Extract forms
-  const formRegex = /<form[^>]*action=["']([^"']*)["'][^>]*method=["']([^"']*)["'][^>]*>([\s\S]*?)<\/form>/gi;
-  let formMatch;
+  // Extract forms using Cheerio
   let formIndex = 0;
-  while ((formMatch = formRegex.exec(html)) !== null && formIndex < 10) {
-    const action = formMatch[1];
-    const method = formMatch[2].toUpperCase() || 'GET';
-    const formHtml = formMatch[3];
+  $('form').each((_, el) => {
+    if (formIndex >= 10) return false;
+    const action = $(el).attr('action') || baseUrl;
+    const method = ($(el).attr('method') || 'GET').toUpperCase();
 
     const inputs: FormFieldInfo[] = [];
-    const inputRegex = /<(input|textarea|select)[^>]*>/gi;
-    let inputMatch;
+    $(el)
+      .find('input, textarea, select')
+      .each((_, inputEl) => {
+        const tagName = inputEl.tagName?.toLowerCase();
+        const name = $(inputEl).attr('name');
+        if (!name) return;
 
-    while ((inputMatch = inputRegex.exec(formHtml)) !== null) {
-      const tag = inputMatch[1].toLowerCase();
-      const fullTag = inputMatch[0];
+        const type =
+          tagName === 'textarea'
+            ? 'textarea'
+            : tagName === 'select'
+              ? 'select'
+              : ($(inputEl).attr('type') || 'text').toLowerCase();
 
-      const name = getAttr(fullTag, 'name');
-      const type = tag === 'textarea' ? 'textarea' : (getAttr(fullTag, 'type') || (tag === 'select' ? 'select' : 'text'));
-      const label = getAttr(fullTag, 'label') || getAttr(fullTag, 'placeholder') || name;
-      const placeholder = getAttr(fullTag, 'placeholder');
-      const required = fullTag.includes('required');
+        // Skip non-interactive input types
+        if (['hidden', 'submit', 'button', 'image', 'reset'].includes(type)) return;
 
-      if (name && !['hidden', 'submit', 'button', 'image', 'reset'].includes(type)) {
+        const label =
+          $(inputEl).attr('label') || $(inputEl).attr('placeholder') || name;
+        const placeholder = $(inputEl).attr('placeholder');
+        const required = $(inputEl).prop('required') === true;
+
         const field: FormFieldInfo = { name, type, label, placeholder, required };
 
         // Extract select options
-        if (type === 'select' || tag === 'select') {
+        if (type === 'select') {
           const options: string[] = [];
-          const optionRegex = /<option[^>]*value=["']([^"']*)["'][^>]*>([\s\S]*?)<\/option>/gi;
-          let optMatch;
-          while ((optMatch = optionRegex.exec(formHtml)) !== null) {
-            if (optMatch[1]) options.push(`${optMatch[1]}: ${cleanText(optMatch[2])}`);
-          }
+          $(inputEl)
+            .find('option[value]')
+            .each((_, optEl) => {
+              const val = $(optEl).attr('value');
+              const optText = $(optEl).text().trim();
+              if (val) options.push(`${val}: ${optText}`);
+            });
           if (options.length > 0) field.options = options.slice(0, 20);
         }
 
         inputs.push(field);
-      }
-    }
+      });
 
     // Find submit button text
-    const submitMatch = formHtml.match(/<button[^>]*type=["']submit["'][^>]*>([\s\S]*?)<\/button>/i)
-      || formHtml.match(/<input[^>]*type=["']submit["'][^>]*value=["']([^"']*)["']/i);
-
-    forms.push({
-      action: action || baseUrl,
-      method,
-      inputs,
-      submitText: submitMatch
-        ? cleanText(submitMatch[1] || submitMatch[2] || 'Submit')
-        : 'Submit',
-      index: formIndex,
-    });
-    formIndex++;
-  }
-
-  // Also try form with method before action
-  const formRegex2 = /<form[^>]*method=["']([^"']*)["'][^>]*action=["']([^"']*)["'][^>]*>([\s\S]*?)<\/form>/gi;
-  while ((formMatch = formRegex2.exec(html)) !== null && formIndex < 10) {
-    const method = formMatch[1].toUpperCase() || 'GET';
-    const action = formMatch[2];
-    const formHtml = formMatch[3];
-    // Re-use same input parsing...
-    const inputs: FormFieldInfo[] = [];
-    const inputRegex = /<(input|textarea|select)[^>]*>/gi;
-    let inputMatch;
-    while ((inputMatch = inputRegex.exec(formHtml)) !== null) {
-      const tag = inputMatch[1].toLowerCase();
-      const fullTag = inputMatch[0];
-      const name = getAttr(fullTag, 'name');
-      const type = tag === 'textarea' ? 'textarea' : (getAttr(fullTag, 'type') || 'text');
-      if (name && !['hidden', 'submit', 'button'].includes(type)) {
-        inputs.push({ name, type, label: name, required: fullTag.includes('required') });
+    let submitText = 'Submit';
+    const submitBtn = $(el).find('button[type="submit"]').first();
+    if (submitBtn.length > 0) {
+      submitText = submitBtn.text().trim() || 'Submit';
+    } else {
+      const submitInput = $(el).find('input[type="submit"]').first();
+      if (submitInput.length > 0) {
+        submitText = submitInput.attr('value') || 'Submit';
       }
     }
-    forms.push({ action: action || baseUrl, method, inputs, submitText: 'Submit', index: formIndex });
-    formIndex++;
-  }
 
-  // Extract readable text content (remove scripts, styles, tags)
-  const text = cleanText(html)
-    .replace(/\s+/g, ' ')
-    .trim();
+    forms.push({ action, method, inputs, submitText, index: formIndex });
+    formIndex++;
+  });
+
+  // Use html-parser's simplifyHtml for high-quality content extraction
+  const text = simplifyHtml(html);
 
   return { text, links, forms };
-}
-
-function getAttr(tag: string, attr: string): string {
-  const regex = new RegExp(`${attr}=["']([^"']*)["']`, 'i');
-  const match = tag.match(regex);
-  return match ? match[1] : '';
-}
-
-function cleanText(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<noscript[\s\S]*?<\/noscript>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#x27;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&mdash;/g, '—')
-    .replace(/&ndash;/g, '–')
-    .replace(/&\w+;/g, '');
-}
-
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&mdash;/g, '—')
-    .replace(/&ndash;/g, '–');
 }
 
 /**

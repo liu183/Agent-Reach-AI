@@ -177,11 +177,7 @@ export function SettingsPanel() {
       setCustomBaseUrl(data.config.baseUrl || '');
       setMaxTokens(data.config.maxTokens || 4096);
       setTemperature(data.config.temperature ?? 0.7);
-      // Pre-fill NVIDIA API key: the server returns a masked key,
-      // so we use the real default NVIDIA key for the nvidia provider
-      if (data.config.provider === 'nvidia') {
-        setApiKeyInput('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');
-      } else if (data.config.apiKey) {
+      if (data.config.apiKey) {
         setApiKeyInput(data.config.apiKey);
       }
     } catch {
@@ -202,8 +198,8 @@ export function SettingsPanel() {
       clearTimeout(fetchModelsTimerRef.current);
     }
 
-    const DEFAULT_NVIDIA_KEY = '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';
-    const keyToUse = apiKeyInput || (selectedProvider === 'nvidia' ? DEFAULT_NVIDIA_KEY : '');
+    // NVIDIA API key is configured via environment variable or Settings page
+    const keyToUse = apiKeyInput || '';
     const baseUrlToUse = selectedProvider === 'custom' ? customBaseUrl : '';
 
     if (!keyToUse) return;
@@ -287,8 +283,8 @@ export function SettingsPanel() {
 
   // Test model connection
   const handleTestConnection = async () => {
-    const DEFAULT_NVIDIA_KEY = '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';
-    const keyToTest = apiKeyInput || (selectedProvider === 'nvidia' ? DEFAULT_NVIDIA_KEY : '');
+    // NVIDIA API key is configured via environment variable or Settings page
+    const keyToTest = apiKeyInput || '';
 
     if (!keyToTest) {
       toast.error('Please enter an API key first');
@@ -344,8 +340,8 @@ export function SettingsPanel() {
 
   // LLM save handler
   const handleSaveLlm = async () => {
-    const DEFAULT_NVIDIA_KEY = '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';
-    const keyToSave = apiKeyInput || (selectedProvider === 'nvidia' ? DEFAULT_NVIDIA_KEY : '');
+    // NVIDIA API key is configured via environment variable or Settings page
+    const keyToSave = apiKeyInput || '';
 
     if (!keyToSave) {
       toast.error('Please enter an API key');
@@ -528,8 +524,8 @@ export function SettingsPanel() {
                       size="icon"
                       className="size-6"
                       onClick={() => {
-                        const DEFAULT_NVIDIA_KEY = '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';
-                        const keyToUse = apiKeyInput || (selectedProvider === 'nvidia' ? DEFAULT_NVIDIA_KEY : '');
+                        // NVIDIA API key is configured via environment variable or Settings page
+                        const keyToUse = apiKeyInput || '';
                         if (keyToUse) {
                           fetchDynamicModels(selectedProvider, keyToUse, selectedProvider === 'custom' ? customBaseUrl : '');
                         }

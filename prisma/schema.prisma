@@ -102,6 +102,7 @@ model Report {
   channel     String?                       // Primary channel
   status      String   @default("completed") // completed, partial, error
   wordCount   Int      @default(0)
+  metadata    String?  @db.Text                 // JSON: extra data (turnsUsed, agentInfo, etc.)
 
   scheduledTaskId String?
   browseTaskId    String?

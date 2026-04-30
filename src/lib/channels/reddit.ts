@@ -1,4 +1,5 @@
 import type { Channel, ChannelHealth } from './base';
+import { getChannelAuthConfig } from './config-provider';
 
 export const redditChannel: Channel = {
   id: 'reddit',
@@ -24,10 +25,20 @@ export const redditChannel: Channel = {
   },
 
   async collect(query: string): Promise<{ title: string; content: string; url: string }> {
+    const subreddit = query.includes('r/') ? query : `r/${query.replace(/^\/?r\//, '')}`;
+    const apiUrl = `https://www.reddit.com/${subreddit}/hot.json?limit=10`;
+    const headers: Record<string, string> = { 'User-Agent': 'AgentReach/2.0' };
+
+    // Attach cookie from DB config if available (for age-gated or auth-required subs)
+    const authConfig = await getChannelAuthConfig('reddit');
+    const cookie = authConfig?.cookie as string | undefined;
+    if (cookie) {
+      headers['Cookie'] = cookie;
+    }
+
     try {
-      const subreddit = query.includes('r/') ? query : `r/${query.replace(/^\/?r\//, '')}`;
-      const resp = await fetch(`https://www.reddit.com/${subreddit}/hot.json?limit=10`, {
-        headers: { 'User-Agent': 'AgentReach/2.0' },
+      const resp = await fetch(apiUrl, {
+        headers,
         signal: AbortSignal.timeout(15000),
       });
       if (!resp.ok) throw new Error(`Reddit API error: ${resp.status}`);

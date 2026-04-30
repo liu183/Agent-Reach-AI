@@ -145,13 +145,11 @@ export const MODEL_CATALOG: ModelOption[] = [
 ];
 
 // Default configuration: NVIDIA NIM
-// Built-in NVIDIA API key as fallback so the system works out of the box.
-// Users can override in Settings with their own key.
-const DEFAULT_NVIDIA_KEY = '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';
-
+// API key is loaded from environment variable or database settings.
+// Users can configure their own key in Settings.
 export const DEFAULT_LLM_CONFIG: LLMProviderConfig = {
   provider: 'nvidia',
-  apiKey: DEFAULT_NVIDIA_KEY,
+  apiKey: '',
   baseUrl: PROVIDERS.nvidia.baseUrl,
   model: 'meta/llama-3.1-70b-instruct',
   maxTokens: 4096,
