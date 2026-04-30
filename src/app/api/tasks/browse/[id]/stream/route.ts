@@ -50,7 +50,7 @@ export async function GET(
         const summaryPreview = summary.length > 300 ? summary.substring(0, 300) + '...' : summary;
         await db.browseTask.update({
           where: { id },
-          data: { status: 'completed', progress: 100, resultSummary: summaryPreview, title },
+          data: { status: 'completed', progress: 100, resultSummary: summaryPreview },
         });
         sendEvent('done', { status: 'completed', progress: 100, title, summary });
       } catch (err) {
@@ -102,7 +102,7 @@ export async function POST(
       const summaryPreview = summary.length > 300 ? summary.substring(0, 300) + '...' : summary;
       await db.browseTask.update({
         where: { id },
-        data: { status: 'completed', progress: 100, resultSummary: summaryPreview, title },
+        data: { status: 'completed', progress: 100, resultSummary: summaryPreview },
       });
     })
     .catch(async (err) => {
