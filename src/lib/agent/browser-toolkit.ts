@@ -18,30 +18,30 @@ import {
 export async function fetchPage(url: string): Promise<PageSnapshot> {
   let rawHtml = '';
 
-  // Try Jina Reader first (handles JS rendering, anti-bot)
+  // Try direct fetch first (faster, no external dependency)
   try {
-    const resp = await fetch(`${JINA_READER_URL}${url}`, {
+    const resp = await fetch(url, {
       headers: {
-        Accept: 'text/plain',
-        'X-Return-Format': 'html',
-        'X-No-Cache': 'true',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
       },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(15000),
     });
-    if (!resp.ok) throw new Error(`Jina HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     rawHtml = await resp.text();
   } catch {
-    // Fallback: direct fetch
+    // Fallback: Jina Reader (handles JS rendering, anti-bot)
     try {
-      const resp = await fetch(url, {
+      const resp = await fetch(`${JINA_READER_URL}${url}`, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+          Accept: 'text/plain',
+          'X-Return-Format': 'html',
+          'X-No-Cache': 'true',
         },
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(20000),
       });
-      if (!resp.ok) throw new Error(`Direct HTTP ${resp.status}`);
+      if (!resp.ok) throw new Error(`Jina HTTP ${resp.status}`);
       rawHtml = await resp.text();
     } catch (err) {
       throw new Error(`Failed to fetch ${url}: ${err instanceof Error ? err.message : String(err)}`);
