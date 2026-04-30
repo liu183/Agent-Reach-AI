@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Key, Shield, Save, ExternalLink, Eye, EyeOff, Globe,
-  Cpu, Sparkles, Settings2, Check, AlertCircle, RefreshCw
+  Cpu, Sparkles, Settings2, Check, AlertCircle, RefreshCw, Zap, Loader2, XCircle, Clock, Smartphone
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { LLMProvider } from '@/lib/agent/llm';
@@ -84,7 +84,7 @@ function formatContextLength(n: number): string {
 }
 
 const providerIcons: Record<string, React.ComponentType<{ className?: string }>> = {
-  Cpu, Sparkles, Settings2,
+  Cpu, Sparkles, Settings2, Smartphone,
 };
 
 // ===== Component =====
@@ -109,6 +109,17 @@ export function SettingsPanel() {
   const [temperature, setTemperature] = useState(0.7);
   const [showApiKey, setShowApiKey] = useState(false);
   const [savingLlm, setSavingLlm] = useState(false);
+
+  // Test connection state
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message: string;
+    reply?: string;
+    modelUsed?: string;
+    latency?: number;
+    error?: string;
+  } | null>(null);
 
   // Fetch LLM config from server
   const fetchLlmConfig = useCallback(async () => {
@@ -196,6 +207,63 @@ export function SettingsPanel() {
 
   const toggleSecret = (key: string) => {
     setShowSecrets((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Test model connection
+  const handleTestConnection = async () => {
+    const DEFAULT_NVIDIA_KEY = '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';
+    const keyToTest = apiKeyInput || (selectedProvider === 'nvidia' ? DEFAULT_NVIDIA_KEY : '');
+
+    if (!keyToTest) {
+      toast.error('Please enter an API key first');
+      return;
+    }
+    if (!selectedModel) {
+      toast.error('Please select a model first');
+      return;
+    }
+
+    setTesting(true);
+    setTestResult(null);
+
+    try {
+      const data = await apiFetch<{
+        success: boolean;
+        message?: string;
+        reply?: string;
+        modelUsed?: string;
+        latency?: number;
+        error?: string;
+      }>('/api/settings/llm', {
+        method: 'PUT',
+        body: JSON.stringify({
+          provider: selectedProvider,
+          apiKey: keyToTest,
+          baseUrl: selectedProvider === 'custom' ? customBaseUrl : undefined,
+          model: selectedModel,
+        }),
+      });
+
+      setTestResult({
+        success: data.success,
+        message: data.success ? (data.message || 'Connection OK') : (data.error || 'Connection failed'),
+        reply: data.reply,
+        modelUsed: data.modelUsed,
+        latency: data.latency,
+        error: data.error,
+      });
+
+      if (data.success) {
+        toast.success(`Model connected! (${data.latency}ms)`);
+      } else {
+        toast.error(`Connection failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch {
+      setTestResult({ success: false, message: 'Network error - failed to reach server' });
+      toast.error('Network error while testing connection');
+    } finally {
+      setTesting(false);
+    }
   };
 
   // LLM save handler
@@ -321,6 +389,7 @@ export function SettingsPanel() {
                 <p className="text-xs text-muted-foreground">
                   {selectedProvider === 'nvidia' && 'NVIDIA NIM provides fast, free API access to popular open-source models.'}
                   {selectedProvider === 'openai' && 'OpenAI GPT-4o and o-series models for high-quality summarization.'}
+                  {selectedProvider === 'xiaomi' && 'Xiaomi MiMo models including V2.5 Pro, TTS, and Omni variants.'}
                   {selectedProvider === 'custom' && 'Connect to any OpenAI-compatible API endpoint.'}
                 </p>
               </div>
@@ -432,19 +501,82 @@ export function SettingsPanel() {
                 </div>
               </div>
 
+              {/* Test Connection Result */}
+              {testResult && (
+                <div className={`rounded-lg border p-3 ${
+                  testResult.success
+                    ? 'border-emerald-500/30 bg-emerald-500/5'
+                    : 'border-red-500/30 bg-red-500/5'
+                }`}>
+                  <div className="flex items-start gap-2">
+                    {testResult.success ? (
+                      <Check className="size-4 text-emerald-400 mt-0.5 shrink-0" />
+                    ) : (
+                      <XCircle className="size-4 text-red-400 mt-0.5 shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-medium ${testResult.success ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {testResult.success ? 'Connection Successful' : 'Connection Failed'}
+                        </span>
+                        {testResult.latency !== undefined && testResult.latency > 0 && (
+                          <Badge variant="secondary" className="text-[10px] gap-1">
+                            <Clock className="size-2.5" />
+                            {testResult.latency}ms
+                          </Badge>
+                        )}
+                      </div>
+                      {testResult.success && testResult.modelUsed && (
+                        <p className="text-xs text-muted-foreground">
+                          Model: {testResult.modelUsed}
+                        </p>
+                      )}
+                      {testResult.success && testResult.reply && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          Response: {testResult.reply}
+                        </p>
+                      )}
+                      {!testResult.success && (
+                        <p className="text-xs text-red-400/80 break-all">
+                          {testResult.message}
+                        </p>
+                      )}
+                    </div>
+                    <Button variant="ghost" size="icon" className="shrink-0 size-6" onClick={() => setTestResult(null)}>
+                      <XCircle className="size-3" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {/* Actions */}
               <div className="flex items-center justify-between pt-2">
-                <Button variant="ghost" size="sm" onClick={handleResetLlm} className="text-muted-foreground">
-                  <RefreshCw className="size-3.5 mr-1.5" />
-                  Reset to Default
-                </Button>
-                <Button onClick={handleSaveLlm} disabled={savingLlm} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={handleResetLlm} className="text-muted-foreground">
+                    <RefreshCw className="size-3.5 mr-1.5" />
+                    Reset
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestConnection}
+                    disabled={testing || savingLlm}
+                    className="gap-1.5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+                  >
+                    {testing ? (
+                      <><Loader2 className="size-3.5 animate-spin" /> Testing...</>
+                    ) : (
+                      <><Zap className="size-3.5" /> Test Connection</>
+                    )}
+                  </Button>
+                </div>
+                <Button onClick={handleSaveLlm} disabled={savingLlm || testing} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
                   {savingLlm ? (
                     <>Saving...</>
                   ) : (
                     <>
                       <Save className="size-4" />
-                      Save Model Config
+                      Save Config
                     </>
                   )}
                 </Button>

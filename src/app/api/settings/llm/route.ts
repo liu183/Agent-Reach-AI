@@ -28,6 +28,76 @@ export async function GET() {
   });
 }
 
+// Test model connectivity without saving
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { provider, apiKey, baseUrl, model } = body as Partial<LLMProviderConfig>;
+
+    if (!provider || !apiKey || !model) {
+      return NextResponse.json({ success: false, error: 'provider, apiKey, and model are required' }, { status: 400 });
+    }
+
+    const resolvedBaseUrl = baseUrl || PROVIDERS[provider as LLMProvider]?.baseUrl || '';
+    if (!resolvedBaseUrl) {
+      return NextResponse.json({ success: false, error: 'baseUrl is required for this provider' }, { status: 400 });
+    }
+
+    const startTime = Date.now();
+    const url = `${resolvedBaseUrl}/chat/completions`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: 'You are a helpful assistant.' },
+          { role: 'user', content: 'Reply with exactly: Connection successful!' },
+        ],
+        max_tokens: 50,
+        temperature: 0,
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    const latency = Date.now() - startTime;
+
+    if (!response.ok) {
+      let errorMsg = `HTTP ${response.status}`;
+      try {
+        const errBody = await response.json();
+        errorMsg = errBody?.error?.message || errBody?.message || errorMsg;
+      } catch { /* use default error */ }
+      return NextResponse.json({
+        success: false,
+        error: errorMsg,
+        latency,
+        status: response.status,
+      });
+    }
+
+    const data = await response.json();
+    const reply = data.choices?.[0]?.message?.content || '';
+    const modelUsed = data.model || model;
+
+    return NextResponse.json({
+      success: true,
+      message: 'Model connection successful',
+      reply: reply.substring(0, 200),
+      modelUsed,
+      latency,
+    });
+  } catch (error) {
+    const latency = 0;
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      latency,
+    });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
