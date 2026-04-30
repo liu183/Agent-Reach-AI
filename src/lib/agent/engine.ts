@@ -85,8 +85,8 @@ export async function runAgent(
   onStep: StepCallback
 ): Promise<AgentResult> {
   const config: AgentConfig = {
-    maxTurns,
-    maxContentLength: 30000,
+    maxTurns: Math.min(maxTurns, 10),
+    maxContentLength: 12000,
     verbose: true,
   };
 
@@ -133,7 +133,7 @@ export async function runAgent(
         ? formatPageForLLM(currentSnapshot, config.maxContentLength)
         : 'No page loaded.';
 
-      const historyContext = turns.slice(-6).map((t, i) =>
+      const historyContext = turns.slice(-3).map((t, i) =>
         `--- Previous Step ${i + 1} ---\nObservation: ${t.observation}\nAction: ${t.action.type} → ${t.action.target || ''}\nResult: ${t.result}`
       ).join('\n\n');
 
@@ -154,7 +154,7 @@ Based on the task and current page state, decide your next action. Remember to o
         const llmResponse = await chatCompletion([
           { role: 'system', content: AGENT_SYSTEM_PROMPT },
           { role: 'user', content: thinkPrompt },
-        ], { maxTokens: 2000, temperature: 0.3 });
+        ], { maxTokens: 800, temperature: 0.2 });
 
         action = parseAction(llmResponse, turn);
       } catch (err) {
@@ -169,7 +169,7 @@ Based on the task and current page state, decide your next action. Remember to o
         const fallbackResponse = await chatCompletion([
           { role: 'system', content: AGENT_SYSTEM_PROMPT },
           { role: 'user', content: `Task: ${task}\nCurrent page: ${currentSnapshot?.title || 'unknown'}\nWhat should I do next? Respond with ONLY JSON.` },
-        ], { maxTokens: 500, temperature: 0.2 });
+        ], { maxTokens: 300, temperature: 0.1 });
 
         action = parseAction(fallbackResponse, turn);
       }
@@ -300,7 +300,7 @@ Based on the task and current page state, decide your next action. Remember to o
             const extractResponse = await chatCompletion([
               { role: 'system', content: 'Extract the requested information from the page content. Be thorough and specific. If the information is not found, say so clearly.' },
               { role: 'user', content: `Extract from page "${currentSnapshot.title}":\n${extractQuery}\n\nPage content:\n${currentSnapshot.content.substring(0, 15000)}` },
-            ], { maxTokens: 2000, temperature: 0.1 });
+            ], { maxTokens: 1500, temperature: 0.1 });
             observation = `Extracted information from "${currentSnapshot.title}"`;
             result = extractResponse;
             onStep({
@@ -476,7 +476,7 @@ async function generateFinalSummary(task: string, turns: AgentTurn[]): Promise<s
       role: 'user',
       content: `## Original Task\n${task}\n\n## Agent Execution Log\n${historySummary}\n\nPlease provide a comprehensive summary of what was accomplished.`,
     },
-  ], { maxTokens: 3000, temperature: 0.3 });
+  ], { maxTokens: 1500, temperature: 0.2 });
 }
 
 async function saveReport(
