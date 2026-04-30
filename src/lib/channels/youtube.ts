@@ -1,4 +1,5 @@
 import type { Channel, ChannelHealth } from './base';
+import { JINA_READER_URL } from '@/lib/constants';
 
 export const youtubeChannel: Channel = {
   id: 'youtube',
@@ -10,6 +11,7 @@ export const youtubeChannel: Channel = {
   async check(): Promise<{ status: ChannelHealth; message: string }> {
     try {
       const resp = await fetch('https://www.youtube.com', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; AgentReach/2.0)' },
         signal: AbortSignal.timeout(10000),
       });
       if (resp.ok) {
@@ -22,13 +24,43 @@ export const youtubeChannel: Channel = {
   },
 
   async collect(query: string): Promise<{ title: string; content: string; url: string }> {
-    // Extract video ID if it's a URL
-    const videoIdMatch = query.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    if (videoIdMatch) {
-      const videoId = videoIdMatch[1];
-      const url = `https://www.youtube.com/watch?v=${videoId}`;
-      return { title: `YouTube Video: ${videoId}`, content: `Video URL: ${url}\nNote: Full transcript extraction requires yt-dlp. Basic metadata available.`, url };
+    // If it's a YouTube URL, use Jina Reader to extract transcript/metadata
+    const isUrl = query.startsWith('http') || /youtu\.?be/i.test(query);
+    if (isUrl) {
+      const url = query.match(/^https?:\/\//) ? query : `https://${query}`;
+      try {
+        const resp = await fetch(`${JINA_READER_URL}${url}`, {
+          headers: { Accept: 'text/plain', 'X-Return-Format': 'html' },
+          signal: AbortSignal.timeout(30000),
+        });
+        if (resp.ok) {
+          const content = await resp.text();
+          if (content.length > 100) {
+            return { title: `YouTube: ${query}`, content, url };
+          }
+        }
+      } catch {
+        // Jina failed, try direct
+      }
     }
-    return { title: 'YouTube Search', content: `Search query: ${query}\nNote: YouTube search requires yt-dlp for transcript extraction.`, url: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}` };
+
+    // For search queries, use Jina Reader on YouTube search results
+    const searchUrl = isUrl ? query : `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+    try {
+      const resp = await fetch(`${JINA_READER_URL}${searchUrl}`, {
+        headers: { Accept: 'text/plain', 'X-Return-Format': 'html' },
+        signal: AbortSignal.timeout(30000),
+      });
+      if (resp.ok) {
+        const content = await resp.text();
+        if (content.length > 50) {
+          return { title: `YouTube Search: ${query}`, content, url: searchUrl };
+        }
+      }
+    } catch {
+      // fallback
+    }
+
+    return { title: 'YouTube', content: `Failed to fetch YouTube content for: ${query}`, url: searchUrl };
   },
 };

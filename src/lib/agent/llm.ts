@@ -3,7 +3,7 @@
  * Supports: NVIDIA NIM, OpenAI, and any OpenAI-compatible API
  * Default provider: NVIDIA
  */
-export type LLMProvider = 'nvidia' | 'openai' | 'custom';
+export type LLMProvider = 'nvidia' | 'openai' | 'xiaomi' | 'custom';
 
 export interface LLMProviderConfig {
   provider: LLMProvider;
@@ -37,6 +37,13 @@ export const PROVIDERS: Record<LLMProvider, { name: string; nameZh: string; base
     baseUrl: 'https://api.openai.com/v1',
     icon: 'Sparkles',
     color: 'text-emerald-400',
+  },
+  xiaomi: {
+    name: 'Xiaomi (MiMo)',
+    nameZh: '小米 MiMo',
+    baseUrl: 'https://api.mistral.ai/v1',
+    icon: 'Smartphone',
+    color: 'text-orange-400',
   },
   custom: {
     name: 'Custom (OpenAI-compatible)',
@@ -125,6 +132,16 @@ export const MODEL_CATALOG: ModelOption[] = [
   { id: 'openai/o1-preview', name: 'o1 Preview', provider: 'openai', description: 'Advanced reasoning model', contextLength: 128000, category: 'Reasoning' },
   { id: 'openai/o1-mini', name: 'o1 Mini', provider: 'openai', description: 'Compact reasoning model', contextLength: 128000, category: 'Reasoning' },
   { id: 'openai/o3-mini', name: 'o3 Mini', provider: 'openai', description: 'Latest compact reasoning model', contextLength: 200000, category: 'Reasoning' },
+
+  // ===== Xiaomi MiMo Models =====
+  { id: 'MiMo-V2.5-Pro', name: 'MiMo V2.5 Pro', provider: 'xiaomi', description: 'MiMo V2.5 Pro - most capable MiMo model with superior reasoning', contextLength: 131072, category: 'Flagship' },
+  { id: 'MiMo-V2.5', name: 'MiMo V2.5', provider: 'xiaomi', description: 'MiMo V2.5 - balanced performance and efficiency', contextLength: 131072, category: 'General' },
+  { id: 'MiMo-V2.5-TTS-VoiceClone', name: 'MiMo V2.5 TTS VoiceClone', provider: 'xiaomi', description: 'MiMo V2.5 text-to-speech with voice cloning support', contextLength: 32768, category: 'Audio' },
+  { id: 'MiMo-V2.5-TTS-VoiceDesign', name: 'MiMo V2.5 TTS VoiceDesign', provider: 'xiaomi', description: 'MiMo V2.5 text-to-speech with custom voice design', contextLength: 32768, category: 'Audio' },
+  { id: 'MiMo-V2.5-TTS', name: 'MiMo V2.5 TTS', provider: 'xiaomi', description: 'MiMo V2.5 text-to-speech base model', contextLength: 32768, category: 'Audio' },
+  { id: 'MiMo-V2-Pro', name: 'MiMo V2 Pro', provider: 'xiaomi', description: 'MiMo V2 Pro - previous generation Pro model', contextLength: 131072, category: 'General' },
+  { id: 'MiMo-V2-Omni', name: 'MiMo V2 Omni', provider: 'xiaomi', description: 'MiMo V2 Omni - multimodal model supporting text, image, and audio', contextLength: 131072, category: 'Multimodal' },
+  { id: 'MiMo-V2-TTS', name: 'MiMo V2 TTS', provider: 'xiaomi', description: 'MiMo V2 text-to-speech model', contextLength: 32768, category: 'Audio' },
 ];
 
 // Default configuration: NVIDIA NIM
