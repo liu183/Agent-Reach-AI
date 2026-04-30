@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       data: {
         userId,
         url: body.url,
-        prompt: body.prompt || 'Summarize this web page comprehensively.',
+        prompt: body.prompt || 'Browse this page and provide a comprehensive summary of its content.',
         maxTurns: body.maxTurns || 15,
         status: 'pending',
       },

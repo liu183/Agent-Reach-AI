@@ -23,7 +23,7 @@ import { apiFetch } from '@/lib/api-client';
 export function BrowseTaskForm() {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState('');
-  const [prompt, setPrompt] = useState('Summarize this web page comprehensively in Markdown format.');
+  const [prompt, setPrompt] = useState('');
   const [loading, setLoading] = useState(false);
   const { setView, setPendingBrowseTaskId } = useAppStore();
 
@@ -38,14 +38,17 @@ export function BrowseTaskForm() {
     try {
       const data = await apiFetch<{id?: string; taskId?: string; error?: string}>('/api/tasks/browse', {
         method: 'POST',
-        body: JSON.stringify({ url: url.trim(), prompt: prompt.trim() }),
+        body: JSON.stringify({
+          url: url.trim(),
+          prompt: (prompt.trim() || 'Browse this page and provide a comprehensive summary') ,
+        }),
       });
       if (!data.error) {
         const newTaskId = data.id || data.taskId;
         toast.success('Browse task created, agent is processing...');
         setOpen(false);
         setUrl('');
-        setPrompt('Summarize this web page comprehensively in Markdown format.');
+        setPrompt('');
         // Pass new task ID to live panel so it auto-selects and triggers SSE execution
         setPendingBrowseTaskId(newTaskId || null);
         // Switch to live view

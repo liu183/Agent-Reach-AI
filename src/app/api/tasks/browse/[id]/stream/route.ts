@@ -35,7 +35,7 @@ export async function GET(
 
       // Mark as running
       await db.browseTask.update({ where: { id }, data: { status: 'running', progress: 5 } });
-      sendEvent('progress', { status: 'running', progress: 5, message: 'Starting agent...' });
+      sendEvent('progress', { status: 'running', progress: 5, phase: 'observe', message: 'Starting agent...' });
 
       try {
         const { title, summary } = await runAgent(task.url, task.prompt, task.maxTurns, userId, async (step) => {
@@ -43,11 +43,19 @@ export async function GET(
             where: { id },
             data: { progress: step.progress, status: step.type === 'error' ? 'error' : 'running' },
           });
-          sendEvent('progress', { status: step.type, progress: step.progress, message: step.message });
+          sendEvent('progress', {
+            status: step.phase,
+            progress: step.progress,
+            phase: step.phase,
+            turn: step.turn,
+            message: step.message,
+            url: step.url,
+            action: step.action,
+          });
         });
 
-        // Save the actual summary to the task
-        const summaryPreview = summary.length > 300 ? summary.substring(0, 300) + '...' : summary;
+        // Save the actual summary
+        const summaryPreview = summary.length > 500 ? summary.substring(0, 500) + '...' : summary;
         await db.browseTask.update({
           where: { id },
           data: { status: 'completed', progress: 100, resultSummary: summaryPreview },
@@ -75,7 +83,7 @@ export async function GET(
   });
 }
 
-// POST to trigger execution (called internally after task creation)
+// POST to trigger execution (called internally)
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -88,7 +96,7 @@ export async function POST(
     return NextResponse.json({ success: true });
   }
 
-  // Run agent and wait for completion (Vercel serverless kills fire-and-forget promises)
+  // Run agent and wait (Vercel serverless kills fire-and-forget promises)
   try {
     const { summary } = await runAgent(task.url, task.prompt, task.maxTurns, userId, async (step) => {
       await db.browseTask.update({
@@ -99,7 +107,7 @@ export async function POST(
         },
       });
     });
-    const summaryPreview = summary.length > 300 ? summary.substring(0, 300) + '...' : summary;
+    const summaryPreview = summary.length > 500 ? summary.substring(0, 500) + '...' : summary;
     await db.browseTask.update({
       where: { id },
       data: { status: 'completed', progress: 100, resultSummary: summaryPreview },
