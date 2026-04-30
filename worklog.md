@@ -1,89 +1,67 @@
----
-Task ID: 1
-Agent: Main Agent
-Task: Add Xiaomi MiMo LLM provider with 8 models
+# Browse Tasks UI Redesign — Worklog
 
-Work Log:
-- Added 'xiaomi' to LLMProvider type union
-- Added Xiaomi provider config (name, baseUrl, icon, color) to PROVIDERS map
-- Added 8 MiMo models to MODEL_CATALOG: V2.5-Pro, V2.5, V2.5-TTS-VoiceClone, V2.5-TTS-VoiceDesign, V2.5-TTS, V2-Pro, V2-Omni, V2-TTS
-- Categories: Flagship, General, Audio, Multimodal
+## Date: 2025-01-XX
 
-Stage Summary:
-- Modified: src/lib/agent/llm.ts
-- Xiaomi MiMo provider fully integrated with settings UI (auto-discovered via providers API)
+## Summary
+Redesigned 5 frontend components for the Browse Tasks feature to create a beautiful, interactive, and polished user experience with a dark-first SaaS aesthetic.
 
----
-Task ID: 2
-Agent: Main Agent
-Task: Implement scheduled task auto-execution engine
+## Files Modified
 
-Work Log:
-- Created /api/cron/run-scheduled-tasks endpoint (GET + POST)
-- Implemented Vercel Cron integration via vercel.json crons config (every 5 min)
-- Added cron expression parser supporting daily/weekly/monthly/interval patterns
-- Added CRON_SECRET env var for production auth
-- Cron flow: find due tasks → collect from channels → LLM summarize → save report → update nextRunAt
+### 1. `src/components/browse/browse-task-list.tsx`
+- **Polished card design**: Gradient backgrounds (`from-card via-card to-card/80`), subtle borders, backdrop blur
+- **Animated status indicators**: Pulsing dot for running tasks, color-coded badges with backgrounds
+- **Shimmer effect**: Running tasks have an animated shimmer overlay for visual attention
+- **Enhanced hover states**: `hover:-translate-y-0.5`, `hover:shadow-lg`, `hover:border-border/80`, external link icon fade-in
+- **Framer Motion**: AnimatePresence with popLayout for smooth add/remove, entrance animations with staggered delays
+- **Delete button**: Opacity transition from hidden to visible on hover
+- **Progress bar**: Custom gradient bar with glow effect for running tasks, percentage label
+- **Tooltip**: Full URL revealed on hover for truncated URLs
+- **ScrollArea**: Replaced manual overflow with shadcn ScrollArea
+- **Empty state**: Gradient icon container with descriptive text
 
-Stage Summary:
-- Created: src/app/api/cron/run-scheduled-tasks/route.ts
-- Modified: vercel.json (added crons array)
+### 2. `src/components/browse/live-browse-panel.tsx`
+- **Terminal-style header**: macOS-style traffic light dots, session ID display, font-mono styling
+- **Phase-colored message bubbles**: Each message rendered in a card with phase-specific background, border, and icon
+- **Active step pulse**: Ping animation on the latest step while agent is running
+- **Collapsible reasoning sections**: Purple-themed collapsible for agent reasoning with Brain icon
+- **URL breadcrumb trail**: Navigation path showing visited domains with current URL highlighted
+- **Enhanced progress bar**: Gradient fills (amber for running, emerald for complete, red for error) with glow shadow and shimmer animation
+- **Turn markers**: Phase-aware action labels (Navigating, Clicking, Filling Form, etc.)
+- **Rich final report**: Markdown rendered with ReactMarkdown + remarkGfm in a dark code-block style container
+- **Copy button**: On the final report with toast confirmation
+- **Initialization animation**: Bouncing dots and glowing icon when agent starts
+- **Motion animations**: AnimatePresence for message list, smooth entrance transitions
 
----
-Task ID: 3
-Agent: Main Agent
-Task: Complete all 9 placeholder channel implementations
+### 3. `src/components/views/tasks-browse-view.tsx`
+- **Hero section**: Status gradient accent bar at top of card, large status icon with phase colors
+- **Stat cards grid**: 4-column grid showing Source, Turns, Progress, Created with colored icons
+- **Tabbed layout**: Three tabs — "Report" | "Agent Steps" | "Raw" with shadcn Tabs
+- **Report tab**: Beautiful prose styling for Markdown with extensive prose customization
+- **Agent Steps tab**: Timeline visualization with 4 phases (Observe → Think → Act → Complete), connected by a vertical line, phase-colored dots
+- **Raw tab**: Monospace pre-formatted output with copy button
+- **Copy report button**: In report tab header
+- **Animated transitions**: AnimatePresence between task list and detail view, tab content animations
+- **Error/pending states**: Styled error card and pending state with pulsing brain icon
 
-Work Log:
-- YouTube: Jina Reader for video pages and search results
-- Twitter/X: Jina Reader for tweets, profiles, and search
-- Weibo: Real m.weibo.cn API for hot search topics
-- XiaoHongShu: Jina Reader for notes and explore page with fallback
-- Xueqiu: Real API with session token for stock discussions
-- Douyin: Jina Reader for video pages and search
-- LinkedIn: Jina Reader for profiles and search results
-- XiaoYuZhou: Jina Reader + podcast toplist API fallback
-- Exa Search: Real Exa API with EXA_API_KEY, DuckDuckGo fallback
-- WeChat: Jina Reader for article extraction
+### 4. `src/components/views/browse-live-view.tsx`
+- **Better header**: Icon in gradient container, enhanced description text with alignment
 
-Stage Summary:
-- All 16 channels now have real data collection capabilities
-- Modified: 10 channel files + exa-search.ts
+### 5. `src/components/tasks/browse-task-form.tsx`
+- **Enhanced dialog header**: Gradient icon, clearer title and description
+- **Feature hint badges**: "Navigate pages", "Extract data", "Follow links", "Summarize" tags
+- **Better input styling**: Globe icon prefix in URL input, focus states with emerald theme
+- **Help text**: Descriptive placeholder examples and helper text below each field
+- **Loading state**: Animated sparkle icon while dispatching
+- **Submit button**: Arrow icon, shadow effects, disabled state
 
----
-Task ID: 4
-Agent: Main Agent
-Task: Build verification and push to GitHub
+## Design Principles Applied
+- **Dark theme first**: All colors tuned for dark backgrounds
+- **Color coding**: Emerald (success/complete), Amber (running/active), Purple (think/brain), Blue (observe), Red (error)
+- **Consistent spacing**: 2.5px-5px increments, generous padding
+- **Micro-interactions**: Hover lifts, fade transitions, pulse animations
+- **Visual hierarchy**: Clear typography scale (10px labels → 13px body → 14px headings → 18px titles)
+- **Border consistency**: `border-border/30` to `border-border/50` for subtle, cohesive borders
+- **No external dependencies added**: All changes use existing shadcn/ui + Framer Motion + Lucide
 
-Work Log:
-- bun install completed successfully
-- bunx next build passed - all 19 routes registered correctly
-- Committed as e128d83
-- Pushed to https://github.com/liu183/Agent-Reach-AI.git main
-
-Stage Summary:
-- Build: SUCCESS (14 files changed, 724 insertions, 49 deletions)
-- Push: SUCCESS (41a69e1..e128d83)
-
----
-Task ID: 1
-Agent: Main Agent
-Task: 检查 Vercel 部署状态，关联代码仓库，完成生产部署
-
-Work Log:
-- 验证 GitHub 仓库存在，6个 commit 已推送
-- 发现 Vercel 项目属于 Team (niu1s-projects)，不是个人账号
-- 发现三个关键问题：(1) SSO保护导致401 (2) cron表达式不符合Hobby计划 (3) 最新代码未部署
-- 获取用户提供的 Vercel Token 并验证有效
-- 创建 .vercel/project.json 关联本地项目到 Vercel
-- 修复 vercel.json cron 表达式从 */5 改为每日 0 0 * * *（Hobby计划限制）
-- 禁用 SSO Protection 使网站可公开访问
-- 使用 vercel --prod 成功部署最新代码（构建54秒完成）
-- 验证 Dashboard、Settings 等所有页面正常加载
-- 提交 vercel.json 修复到 GitHub (commit e3b585f)
-
-Stage Summary:
-- ✅ 部署成功，生产 URL: https://my-project-opal-theta.vercel.app
-- ✅ SSO 保护已关闭，网站可公开访问
-- ✅ cron 修复为 Hobby 计划兼容的每日执行
-- ✅ 所有功能页面验证通过（Dashboard, Settings, Channels, Tasks等）
+## Lint Status
+All modified files pass ESLint with zero errors.
