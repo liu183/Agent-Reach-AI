@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Key, Shield, Save, ExternalLink, Eye, EyeOff, Globe,
-  Cpu, Sparkles, Settings2, Check, AlertCircle, RefreshCw, Zap, Loader2, XCircle, Clock, Smartphone
+  Cpu, Sparkles, Settings2, Check, AlertCircle, RefreshCw, Zap, Loader2, XCircle, Clock, Smartphone, Wifi, Database
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { LLMProvider } from '@/lib/agent/llm';
@@ -43,6 +43,7 @@ interface ModelInfo {
   description: string;
   contextLength: number;
   category: string;
+  source?: 'api' | 'catalog';
 }
 
 interface LLMSettingsData {
@@ -121,6 +122,51 @@ export function SettingsPanel() {
     error?: string;
   } | null>(null);
 
+  // Dynamic models state
+  const [dynamicModels, setDynamicModels] = useState<ModelInfo[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelsSource, setModelsSource] = useState<'catalog' | 'api'>('catalog');
+  const fetchModelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Merge: dynamic models (from API) + catalog models as fallback
+  const allModelsForProvider = dynamicModels.length > 0
+    ? dynamicModels
+    : (llmData?.models.filter((m) => m.provider === selectedProvider) || []);
+  const modelCategories = [...new Set(allModelsForProvider.map((m) => m.category))];
+
+  // Fetch dynamic models from provider API
+  const fetchDynamicModels = useCallback(async (provider: LLMProvider, key: string, baseUrl: string) => {
+    if (!key || key.length < 8) {
+      setDynamicModels([]);
+      setModelsSource('catalog');
+      return;
+    }
+
+    setLoadingModels(true);
+    try {
+      const data = await apiFetch<{ models: ModelInfo[]; count: number; source: string }>('/api/settings/llm/models', {
+        method: 'GET',
+      }, {
+        provider,
+        apiKey: key,
+        baseUrl: baseUrl || undefined,
+      });
+
+      if (data.models && data.models.length > 0) {
+        setDynamicModels(data.models);
+        setModelsSource('api');
+      } else {
+        setDynamicModels([]);
+        setModelsSource('catalog');
+      }
+    } catch {
+      setDynamicModels([]);
+      setModelsSource('catalog');
+    } finally {
+      setLoadingModels(false);
+    }
+  }, []);
+
   // Fetch LLM config from server
   const fetchLlmConfig = useCallback(async () => {
     try {
@@ -149,9 +195,39 @@ export function SettingsPanel() {
     fetchLlmConfig();
   }, [fetchLlmConfig]);
 
-  // Filter models by selected provider
-  const filteredModels = llmData?.models.filter((m) => m.provider === selectedProvider) || [];
-  const modelCategories = [...new Set(filteredModels.map((m) => m.category))];
+  // Auto-fetch models when provider or API key changes (debounced 800ms)
+  useEffect(() => {
+    // Clear previous timer
+    if (fetchModelsTimerRef.current) {
+      clearTimeout(fetchModelsTimerRef.current);
+    }
+
+    const DEFAULT_NVIDIA_KEY = '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';
+    const keyToUse = apiKeyInput || (selectedProvider === 'nvidia' ? DEFAULT_NVIDIA_KEY : '');
+    const baseUrlToUse = selectedProvider === 'custom' ? customBaseUrl : '';
+
+    if (!keyToUse) return;
+
+    fetchModelsTimerRef.current = setTimeout(() => {
+      fetchDynamicModels(selectedProvider, keyToUse, baseUrlToUse);
+    }, 800);
+
+    return () => {
+      if (fetchModelsTimerRef.current) {
+        clearTimeout(fetchModelsTimerRef.current);
+      }
+    };
+  }, [selectedProvider, apiKeyInput, customBaseUrl, fetchDynamicModels]);
+
+  // When switching providers, clear model selection if it doesn't exist in new list
+  useEffect(() => {
+    if (allModelsForProvider.length > 0 && selectedModel) {
+      const exists = allModelsForProvider.some((m) => m.id === selectedModel);
+      if (!exists) {
+        setSelectedModel('');
+      }
+    }
+  }, [allModelsForProvider, selectedModel]);
 
   // Channel settings handlers
   const handleChange = (key: string, value: string) => {
@@ -432,36 +508,74 @@ export function SettingsPanel() {
 
               {/* Model Selection */}
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Model</Label>
-                <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {modelCategories.map((cat) => (
-                      <SelectGroup key={cat}>
-                        <SelectLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          {cat}
-                        </SelectLabel>
-                        {filteredModels
-                          .filter((m) => m.category === cat)
-                          .map((m) => (
-                            <SelectItem key={m.id} value={m.id}>
-                              <div className="flex flex-col gap-0.5">
-                                <span className="text-sm">{m.name}</span>
-                                <span className="text-[10px] text-muted-foreground">
-                                  {m.description} · {formatContextLength(m.contextLength)} ctx
-                                </span>
-                              </div>
-                            </SelectItem>
-                          ))}
-                      </SelectGroup>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium">Model</Label>
+                  <div className="flex items-center gap-1.5">
+                    {modelsSource === 'api' && (
+                      <Badge variant="secondary" className="text-[10px] gap-1 text-emerald-400">
+                        <Wifi className="size-2.5" />
+                        Live ({allModelsForProvider.length})
+                      </Badge>
+                    )}
+                    {modelsSource === 'catalog' && allModelsForProvider.length > 0 && (
+                      <Badge variant="secondary" className="text-[10px] gap-1 text-zinc-400">
+                        <Database className="size-2.5" />
+                        Catalog ({allModelsForProvider.length})
+                      </Badge>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-6"
+                      onClick={() => {
+                        const DEFAULT_NVIDIA_KEY = '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';
+                        const keyToUse = apiKeyInput || (selectedProvider === 'nvidia' ? DEFAULT_NVIDIA_KEY : '');
+                        if (keyToUse) {
+                          fetchDynamicModels(selectedProvider, keyToUse, selectedProvider === 'custom' ? customBaseUrl : '');
+                        }
+                      }}
+                      disabled={loadingModels}
+                    >
+                      <RefreshCw className={`size-3 ${loadingModels ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
+                </div>
+                {loadingModels ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-10 w-full" />
+                    <p className="text-xs text-muted-foreground text-center">Fetching models from API...</p>
+                  </div>
+                ) : (
+                  <Select value={selectedModel} onValueChange={setSelectedModel}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={allModelsForProvider.length === 0 ? 'No models available' : 'Select model'} />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[300px]">
+                      {modelCategories.map((cat) => (
+                        <SelectGroup key={cat}>
+                          <SelectLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            {cat}
+                          </SelectLabel>
+                          {allModelsForProvider
+                            .filter((m) => m.category === cat)
+                            .map((m) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-sm">{m.name || m.id}</span>
+                                  <span className="text-[10px] text-muted-foreground">
+                                    {m.id} · {formatContextLength(m.contextLength)} ctx
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 {selectedModel && (
                   <p className="text-xs text-muted-foreground">
-                    {filteredModels.find((m) => m.id === selectedModel)?.description}
+                    {allModelsForProvider.find((m) => m.id === selectedModel)?.description || selectedModel}
                   </p>
                 )}
               </div>

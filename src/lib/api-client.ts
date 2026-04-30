@@ -28,9 +28,25 @@ function getApiAuthToken(): string {
 
 export async function apiFetch<T = unknown>(
   path: string,
-  options?: RequestInit
+  options?: RequestInit,
+  queryParams?: Record<string, string | undefined>
 ): Promise<T> {
-  const url = apiUrl(path);
+  let url = apiUrl(path);
+
+  // Append query parameters
+  if (queryParams) {
+    const params = new URLSearchParams();
+    for (const [key, val] of Object.entries(queryParams)) {
+      if (val !== undefined && val !== '') {
+        params.append(key, val);
+      }
+    }
+    const qs = params.toString();
+    if (qs) {
+      url = `${url}?${qs}`;
+    }
+  }
+
   const token = getApiAuthToken();
 
   const headers: Record<string, string> = {
