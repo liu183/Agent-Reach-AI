@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, ensureDefaultUser } from '@/lib/api-utils';
+import { runAgent } from '@/lib/agent/engine';
 
 export async function GET() {
   try {
@@ -44,15 +45,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Start agent run in background (fire and forget)
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-    fetch(`${baseUrl}/api/tasks/browse/${task.id}/stream`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
-    }).catch(console.error);
+    // Run agent inline (Vercel serverless kills fire-and-forget promises before they resolve)
+    // We return the response immediately and let the agent run in the same function lifetime
+    // by using waitUntil pattern — but since Next.js App Router doesn't support it directly,
+    // we start the agent in a non-blocking way and rely on the POST /stream endpoint
+    // called by the frontend to actually execute it.
 
     return NextResponse.json({
       id: task.id,

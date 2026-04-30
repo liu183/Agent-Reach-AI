@@ -88,29 +88,28 @@ export async function POST(
     return NextResponse.json({ success: true });
   }
 
-  // Run agent in background
-  runAgent(task.url, task.prompt, task.maxTurns, userId, async (step) => {
+  // Run agent and wait for completion (Vercel serverless kills fire-and-forget promises)
+  try {
+    const { summary } = await runAgent(task.url, task.prompt, task.maxTurns, userId, async (step) => {
+      await db.browseTask.update({
+        where: { id },
+        data: {
+          progress: step.progress,
+          status: step.type === 'error' ? 'error' : 'running',
+        },
+      });
+    });
+    const summaryPreview = summary.length > 300 ? summary.substring(0, 300) + '...' : summary;
     await db.browseTask.update({
       where: { id },
-      data: {
-        progress: step.progress,
-        status: step.type === 'error' ? 'error' : 'running',
-      },
+      data: { status: 'completed', progress: 100, resultSummary: summaryPreview },
     });
-  })
-    .then(async ({ title, summary }) => {
-      const summaryPreview = summary.length > 300 ? summary.substring(0, 300) + '...' : summary;
-      await db.browseTask.update({
-        where: { id },
-        data: { status: 'completed', progress: 100, resultSummary: summaryPreview },
-      });
-    })
-    .catch(async (err) => {
-      await db.browseTask.update({
-        where: { id },
-        data: { status: 'error', error: err instanceof Error ? err.message : 'Unknown' },
-      });
+  } catch (err) {
+    await db.browseTask.update({
+      where: { id },
+      data: { status: 'error', error: err instanceof Error ? err.message : 'Unknown' },
     });
+  }
 
   return NextResponse.json({ success: true });
 }
